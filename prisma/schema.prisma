@@ -1,0 +1,23 @@
+// This file describes your database tables. Prisma reads this and creates
+// matching tables for you — you don't write SQL by hand.
+//
+// Whenever you change this file, run:
+//   npx prisma migrate dev --name describe_your_change
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Just the basics for now. Login-related fields (password, sessions) get
+// added in Milestone 3.
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
