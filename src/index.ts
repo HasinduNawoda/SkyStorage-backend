@@ -1,21 +1,39 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
 import { db } from "./db";
+import { authRouter } from "./routes/auth";
 
 const app = express();
 
-// A "health check" route. It doesn't do anything with a database or users
-// yet — it just proves the server itself is alive and reachable. Load
-// balancers and deploy platforms also ping routes like this to check if
-// your app is still running, so it's worth having from day one.
+app.use(helmet());
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_ORIGIN,
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: "1mb" }));
+app.use(cookieParser());
+
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// Proves the server can actually reach the database, separately from the
-// server just being "up". db.user.count() asks Postgres "how many rows are
-// in the User table right now?" — 0 is a perfectly good answer, it just
-// means the query succeeded.
 app.get("/db-check", async (_req, res) => {
   try {
     const userCount = await db.user.count();
@@ -26,7 +44,9 @@ app.get("/db-check", async (_req, res) => {
   }
 });
 
-const port = 4000;
+app.use("/auth", authRouter);
+
+const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
   console.log(`skystorage-backend listening on http://localhost:${port}`);
 });
