@@ -58,85 +58,117 @@ async function issueSession(res: Response, userId: string) {
   res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: REFRESH_TOKEN_TTL_MS });
 }
 
+// Every route below is wrapped in try/catch. Without this, an async route
+// handler that throws (e.g. the database being briefly unreachable) becomes
+// an *unhandled promise rejection* — and since Node 15+, that crashes the
+// entire process, not just that one request. Catching it here means a
+// transient DB hiccup returns a 500 to that one caller instead of taking
+// the whole server down.
+
 authRouter.post("/signup", authLimiter, async (req: Request, res: Response) => {
-  const parsed = signupSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid input.", details: parsed.error.flatten() });
+  try {
+    const parsed = signupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid input.", details: parsed.error.flatten() });
+    }
+    const { name, email, password } = parsed.data;
+
+    const existing = await db.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await db.user.create({ data: { name, email, passwordHash } });
+
+    await issueSession(res, user.id);
+    res.status(201).json({ id: user.id, name: user.name, email: user.email });
+  } catch (err) {
+    console.error("signup error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
-  const { name, email, password } = parsed.data;
-
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing) {
-    return res.status(409).json({ error: "An account with that email already exists." });
-  }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-  const user = await db.user.create({ data: { name, email, passwordHash } });
-
-  await issueSession(res, user.id);
-  res.status(201).json({ id: user.id, name: user.name, email: user.email });
 });
 
 authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid input." });
+  try {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid input." });
+    }
+    const { email, password } = parsed.data;
+
+    const user = await db.user.findUnique({ where: { email } });
+    const invalid = () => res.status(401).json({ error: "Incorrect email or password." });
+
+    if (!user) return invalid();
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) return invalid();
+
+    await issueSession(res, user.id);
+    res.json({ id: user.id, name: user.name, email: user.email });
+  } catch (err) {
+    console.error("login error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
-  const { email, password } = parsed.data;
-
-  const user = await db.user.findUnique({ where: { email } });
-  const invalid = () => res.status(401).json({ error: "Incorrect email or password." });
-
-  if (!user) return invalid();
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return invalid();
-
-  await issueSession(res, user.id);
-  res.json({ id: user.id, name: user.name, email: user.email });
 });
 
 authRouter.post("/refresh", async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken;
-  if (!token) return res.status(401).json({ error: "Not authenticated." });
-
-  let payload;
   try {
-    payload = verifyRefreshToken(token);
-  } catch {
-    return res.status(401).json({ error: "Session expired, please log in again." });
+    const token = req.cookies?.refreshToken;
+    if (!token) return res.status(401).json({ error: "Not authenticated." });
+
+    let payload;
+    try {
+      payload = verifyRefreshToken(token);
+    } catch {
+      return res.status(401).json({ error: "Session expired, please log in again." });
+    }
+
+    const tokenHash = hashToken(token);
+    const stored = await db.refreshToken.findUnique({ where: { tokenHash } });
+
+    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+      return res.status(401).json({ error: "Session expired, please log in again." });
+    }
+
+    await db.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
+    await issueSession(res, payload.sub);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("refresh error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
-
-  const tokenHash = hashToken(token);
-  const stored = await db.refreshToken.findUnique({ where: { tokenHash } });
-
-  if (!stored || stored.revoked || stored.expiresAt < new Date()) {
-    return res.status(401).json({ error: "Session expired, please log in again." });
-  }
-
-  await db.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
-  await issueSession(res, payload.sub);
-
-  res.json({ ok: true });
 });
 
 authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
-  const user = await db.user.findUnique({
-    where: { id: req.userId },
-    select: { id: true, name: true, email: true },
-  });
-  if (!user) return res.status(404).json({ error: "User not found." });
-  res.json(user);
+  try {
+    const user = await db.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) return res.status(404).json({ error: "User not found." });
+    res.json(user);
+  } catch (err) {
+    console.error("me error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
 });
 
 authRouter.post("/logout", async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken;
-  if (token) {
-    await db.refreshToken.updateMany({
-      where: { tokenHash: hashToken(token) },
-      data: { revoked: true },
-    });
+  try {
+    const token = req.cookies?.refreshToken;
+    if (token) {
+      await db.refreshToken.updateMany({
+        where: { tokenHash: hashToken(token) },
+        data: { revoked: true },
+      });
+    }
+    res.clearCookie("accessToken", cookieOptions);
+    res.clearCookie("refreshToken", cookieOptions);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("logout error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
-  res.clearCookie("accessToken", cookieOptions);
-  res.clearCookie("refreshToken", cookieOptions);
-  res.json({ ok: true });
 });
