@@ -1,3 +1,7 @@
 node_modules
 dist
 .env
+cookies.txt
+cookies2.txt
+.vscode/
+.bevel/
