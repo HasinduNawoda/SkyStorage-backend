@@ -20,7 +20,12 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
 }
 
 export function signRefreshToken(userId: string): string {
-  return jwt.sign({ sub: userId }, REFRESH_SECRET, {
+  // Including a random `jti` (JWT ID) guarantees this token's content is
+  // never identical to another one for the same user — without it, two
+  // tokens issued within the same second (same iat) would be byte-for-byte
+  // identical, which broke the RefreshToken table's unique constraint on
+  // tokenHash the moment login and refresh happened close together.
+  return jwt.sign({ sub: userId, jti: crypto.randomUUID() }, REFRESH_SECRET, {
     expiresIn: Math.floor(REFRESH_TOKEN_TTL_MS / 1000),
   });
 }
