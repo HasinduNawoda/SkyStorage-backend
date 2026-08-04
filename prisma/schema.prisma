@@ -22,6 +22,7 @@ model User {
   passwordHash  String
   createdAt     DateTime       @default(now())
   refreshTokens RefreshToken[]
+  folders       Folder[]
 }
 
 // We store a HASH of each refresh token, never the raw token — so even if
@@ -37,3 +38,23 @@ model RefreshToken {
 
   @@index([userId])
 } 
+
+// A folder belongs to exactly one user (ownerId) and can optionally sit
+// inside another folder (parentId) — null parentId means it's at the root.
+// isFavorite/deletedAt are flags on the row rather than separate tables:
+// "Favorites" = WHERE isFavorite, "Recycle Bin" = WHERE deletedAt IS NOT NULL.
+model Folder {
+  id         String    @id @default(uuid())
+  name       String
+  parentId   String?
+  parent     Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Folder[]  @relation("FolderTree")
+  ownerId    String
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  isFavorite Boolean   @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([ownerId])
+  @@index([parentId])
+}
