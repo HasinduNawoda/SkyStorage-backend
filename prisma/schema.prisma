@@ -23,6 +23,7 @@ model User {
   createdAt     DateTime       @default(now())
   refreshTokens RefreshToken[]
   folders       Folder[]
+  files         File[]
 }
 
 // We store a HASH of each refresh token, never the raw token — so even if
@@ -54,7 +55,31 @@ model Folder {
   isFavorite Boolean   @default(false)
   deletedAt  DateTime?
   createdAt  DateTime  @default(now())
+  files      File[]
 
   @@index([ownerId])
   @@index([parentId])
+}
+
+// Metadata only for now — no actual file bytes stored anywhere yet. That
+// comes in Milestone 7 (Oracle Object Storage), which will add a
+// `storageKey` column here pointing at the object in the bucket. For now
+// this table exists so folders/files can be created, listed, renamed,
+// favorited, and soft-deleted for real, same as Folder above.
+model File {
+  id         String    @id @default(uuid())
+  name       String
+  sizeBytes  Int
+  mimeType   String
+  folderId   String?
+  folder     Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  ownerId    String
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  isFavorite Boolean   @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([ownerId])
+  @@index([folderId])
 }
