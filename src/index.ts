@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import { db } from "./db";
 import { authRouter } from "./routes/auth";
 import { foldersRouter } from "./routes/folders";
+import { filesRouter } from "./routes/files";
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.get("/db-check", async (_req, res) => {
 
 app.use("/auth", authRouter);
 app.use("/folders", foldersRouter);
+app.use("/files", filesRouter);
 
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
