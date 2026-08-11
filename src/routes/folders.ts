@@ -14,14 +14,14 @@ foldersRouter.use(requireAuth);
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(255),
-  parentId: z.string().uuid().nullable().optional(),
+  parentId: z.string().nullable().optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
-  parentId: z.string().uuid().nullable().optional(),
+  parentId: z.string().nullable().optional(),
   isFavorite: z.boolean().optional(),
-  deletedAt: z.string().datetime().nullable().optional(), // ISO string or null to restore
+  deletedAt: z.union([z.string(), z.null()]).optional(),
 });
 
 /** Confirms `parentId` (if given) is null, or a folder this user actually owns. */

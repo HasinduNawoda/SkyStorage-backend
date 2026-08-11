@@ -14,14 +14,14 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(255),
   sizeBytes: z.number().int().nonnegative(),
   mimeType: z.string().trim().min(1).max(255),
-  folderId: z.string().uuid().nullable().optional(),
+  folderId: z.string().nullable().optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
-  folderId: z.string().uuid().nullable().optional(),
+  folderId: z.string().nullable().optional(),
   isFavorite: z.boolean().optional(),
-  deletedAt: z.string().datetime().nullable().optional(),
+  deletedAt: z.union([z.string(), z.null()]).optional(),
 });
 
 /** Confirms `folderId` (if given) is null, or a folder this user actually owns. */
