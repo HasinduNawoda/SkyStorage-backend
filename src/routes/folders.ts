@@ -34,8 +34,19 @@ async function assertValidParent(userId: string, parentId: string | null | undef
 }
 
 // GET /folders?parentId=<uuid>  (omit parentId, or pass "null", for root)
+// GET /folders?all=true         (every folder this user owns, any depth —
+//   the frontend keeps its whole tree in memory client-side for filtering/
+//   search, rather than lazy-loading level by level, so it needs this.)
 foldersRouter.get("/", async (req: Request, res: Response) => {
   try {
+    if (req.query.all === "true") {
+      const folders = await db.folder.findMany({
+        where: { ownerId: req.userId! },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.json(folders);
+    }
+
     const parentId = req.query.parentId;
     const where =
       parentId === undefined || parentId === "null"

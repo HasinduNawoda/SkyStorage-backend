@@ -36,6 +36,14 @@ async function assertValidFolder(userId: string, folderId: string | null | undef
 // GET /files?folderId=<uuid>  (omit folderId, or pass "null", for root)
 filesRouter.get("/", async (req: Request, res: Response) => {
   try {
+    if (req.query.all === "true") {
+      const files = await db.file.findMany({
+        where: { ownerId: req.userId! },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.json(files);
+    }
+
     const folderId = req.query.folderId;
     const where =
       folderId === undefined || folderId === "null"
