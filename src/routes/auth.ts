@@ -34,7 +34,7 @@ const authLimiter = rateLimit({
 const signupSchema = z.object({
   name: z.string().trim().min(1).max(100),
   email: z.string().trim().toLowerCase().email().max(255),
-  password: z.string().min(10).max(200),
+  password: z.string().min(6).max(200),
 });
 
 const loginSchema = z.object({
