@@ -71,6 +71,7 @@ model File {
   name       String
   sizeBytes  Int
   mimeType   String
+  storageKey String?
   folderId   String?
   folder     Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
   ownerId    String
