@@ -14,6 +14,8 @@ const s3 = new S3Client({
     secretAccessKey: process.env.OCI_SECRET_KEY!,
   },
   forcePathStyle: true, // Oracle's S3-compatible endpoint requires path-style URLs, not virtual-hosted-style
+  requestChecksumCalculation: "WHEN_REQUIRED", // AWS SDK v3.1100+ defaults to auto CRC32 checksums — Oracle's S3-compat API doesn't support these
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 const BUCKET = process.env.OCI_BUCKET!;
