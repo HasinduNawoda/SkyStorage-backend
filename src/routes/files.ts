@@ -2,12 +2,10 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
+import { buildStorageKey, getUploadUrl, getDownloadUrl, deleteObject } from "../utils/storage";
 
 export const filesRouter = Router();
 
-// Same pattern as foldersRouter: requireAuth proves someone is logged in,
-// but every query below is additionally scoped to `ownerId: req.userId` —
-// that's what actually stops user A from touching user B's files.
 filesRouter.use(requireAuth);
 
 const createSchema = z.object({
@@ -24,7 +22,6 @@ const updateSchema = z.object({
   deletedAt: z.union([z.string(), z.null()]).optional(),
 });
 
-/** Confirms `folderId` (if given) is null, or a folder this user actually owns. */
 async function assertValidFolder(userId: string, folderId: string | null | undefined) {
   if (folderId === null || folderId === undefined) return;
   const folder = await db.folder.findFirst({ where: { id: folderId, ownerId: userId } });
@@ -33,7 +30,6 @@ async function assertValidFolder(userId: string, folderId: string | null | undef
   }
 }
 
-// GET /files?folderId=<uuid>  (omit folderId, or pass "null", for root)
 filesRouter.get("/", async (req: Request, res: Response) => {
   try {
     if (req.query.all === "true") {
@@ -58,6 +54,11 @@ filesRouter.get("/", async (req: Request, res: Response) => {
   }
 });
 
+// Creates the metadata row AND returns a presigned URL to upload the actual
+// bytes to. The row exists (with a reserved storageKey) even before the
+// browser finishes the PUT — that's fine, it just means a file could
+// theoretically have metadata but no bytes yet if the upload never
+// completes, same tradeoff most cloud storage UIs make.
 filesRouter.post("/", async (req: Request, res: Response) => {
   try {
     const parsed = createSchema.safeParse(req.body);
@@ -70,10 +71,36 @@ filesRouter.post("/", async (req: Request, res: Response) => {
     const file = await db.file.create({
       data: { name, sizeBytes, mimeType, folderId: folderId ?? null, ownerId: req.userId! },
     });
-    res.status(201).json(file);
+
+    const storageKey = buildStorageKey(req.userId!, file.id);
+    await db.file.update({ where: { id: file.id }, data: { storageKey } });
+
+    const uploadUrl = await getUploadUrl(storageKey, mimeType);
+
+    res.status(201).json({ ...file, storageKey, uploadUrl });
   } catch (err: any) {
     if (err.status === 400) return res.status(400).json({ error: err.message });
     console.error("create file error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+// Returns a fresh presigned download URL for an existing file. Short-lived
+// on purpose (5 min) — only issued after confirming this user owns the file.
+filesRouter.get("/:id/download-url", async (req: Request, res: Response) => {
+  try {
+    const file = await db.file.findFirst({
+      where: { id: req.params.id, ownerId: req.userId! },
+    });
+    if (!file) return res.status(404).json({ error: "File not found." });
+    if (!file.storageKey) {
+      return res.status(409).json({ error: "This file has no uploaded content yet." });
+    }
+
+    const url = await getDownloadUrl(file.storageKey);
+    res.json({ url });
+  } catch (err) {
+    console.error("download url error:", err);
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
@@ -114,13 +141,23 @@ filesRouter.patch("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Hard delete — only meant to be called from the Recycle Bin (permanently remove).
+// Hard delete — removes both the database row AND the object in storage,
+// since leaving orphaned bytes in the bucket forever would be a silent
+// storage leak (and, on a paid tier, a real cost leak).
 filesRouter.delete("/:id", async (req: Request, res: Response) => {
   try {
     const existing = await db.file.findFirst({
       where: { id: req.params.id, ownerId: req.userId! },
     });
     if (!existing) return res.status(404).json({ error: "File not found." });
+
+    if (existing.storageKey) {
+      try {
+        await deleteObject(existing.storageKey);
+      } catch (err) {
+        console.error("storage delete error:", err);
+      }
+    }
 
     await db.file.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
