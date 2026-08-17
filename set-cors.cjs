@@ -9,6 +9,10 @@ const s3 = new S3Client({
     secretAccessKey: process.env.OCI_SECRET_KEY,
   },
   forcePathStyle: true,
+  // Oracle's S3-compatible endpoint doesn't support the newer automatic
+  // request checksums the SDK adds by default — this was corrupting the
+  // request body and causing the "MalformedXML" error.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 async function main() {
@@ -20,8 +24,6 @@ async function main() {
           AllowedOrigins: ['http://localhost:5173'],
           AllowedMethods: ['GET', 'PUT', 'HEAD'],
           AllowedHeaders: ['*'],
-          ExposeHeaders: ['ETag'],
-          MaxAgeSeconds: 3600,
         },
       ],
     },
