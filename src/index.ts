@@ -21,12 +21,16 @@ app.use(
 );
 
 app.use(express.json({ limit: "1mb" }));
+// Binary body parser for file-upload proxy route (50 MB cap).
+// Must come AFTER express.json so JSON routes still work — express.raw
+// only fires when Content-Type matches the `type` option.
+app.use(express.raw({ type: "application/octet-stream", limit: "50mb" }));
 app.use(cookieParser());
 
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
-    limit: 120,
+    limit: 200, // bumped from 120 — folder uploads fire many requests at once
     standardHeaders: true,
     legacyHeaders: false,
   })

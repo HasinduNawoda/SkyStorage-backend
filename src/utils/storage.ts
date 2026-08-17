@@ -46,3 +46,33 @@ export async function getDownloadUrl(storageKey: string): Promise<string> {
 export async function deleteObject(storageKey: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: storageKey }));
 }
+
+/** Server-side upload: pushes raw bytes straight to Oracle so the browser
+ *  never needs to talk to Oracle directly (avoids the CORS problem). */
+export async function uploadObject(
+  storageKey: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: storageKey,
+      Body: body,
+      ContentType: contentType,
+    })
+  );
+}
+
+/** Server-side download: fetches the object from Oracle and returns the
+ *  readable stream plus content metadata so the route can pipe it back. */
+export async function downloadObject(storageKey: string) {
+  const response = await s3.send(
+    new GetObjectCommand({ Bucket: BUCKET, Key: storageKey })
+  );
+  return {
+    body: response.Body,
+    contentType: response.ContentType,
+    contentLength: response.ContentLength,
+  };
+}
