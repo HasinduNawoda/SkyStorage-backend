@@ -24,6 +24,7 @@ model User {
   refreshTokens RefreshToken[]
   folders       Folder[]
   files         File[]
+  shares        Share[]
 }
 
 // We store a HASH of each refresh token, never the raw token — so even if
@@ -56,6 +57,7 @@ model Folder {
   deletedAt  DateTime?
   createdAt  DateTime  @default(now())
   files      File[]
+  shares     Share[]
 
   @@index([ownerId])
   @@index([parentId])
@@ -80,7 +82,30 @@ model File {
   deletedAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  shares     Share[]
 
   @@index([ownerId])
   @@index([folderId])
+}
+
+// A share grants access to a single file OR folder. sharedWith = null means
+// a public link (anyone with the token can access); sharedWith = an email
+// means a private share visible under "Shared with me" for that user.
+model Share {
+  id         String   @id @default(uuid())
+  fileId     String?
+  file       File?    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  folderId   String?
+  folder     Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWith String?
+  role       String   @default("viewer")
+  token      String   @unique @default(uuid())
+  createdAt  DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([fileId])
+  @@index([folderId])
+  @@index([sharedWith])
 }
