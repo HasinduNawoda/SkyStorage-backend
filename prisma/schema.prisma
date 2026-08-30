@@ -101,6 +101,7 @@ model Share {
   owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   sharedWith String?
   role       String   @default("viewer")
+  message    String?
   token      String   @unique @default(uuid())
   createdAt  DateTime @default(now())
 

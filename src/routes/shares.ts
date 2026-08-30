@@ -12,12 +12,11 @@ const createSchema = z
     folderId: z.string().optional(),
     sharedWith: z.string().email().optional(),
     role: z.enum(["viewer", "editor"]).default("viewer"),
+    message: z.string().optional(),
   })
-  .refine((data) => {
-    const hasFile = !!data.fileId;
-    const hasFolder = !!data.folderId;
-    return (hasFile || hasFolder) && !(hasFile && hasFolder);
-  }, "Exactly one of fileId or folderId is required.");
+  .refine((data) => data.fileId || data.folderId, {
+    message: "Must provide either fileId or folderId",
+  });
 
 // ---------------------------------------------------------------------------
 // Authenticated routes
@@ -30,7 +29,7 @@ sharesRouter.post("/", requireAuth, async (req: Request, res: Response) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid input.", details: parsed.error.flatten() });
     }
-    const { fileId, folderId, sharedWith, role } = parsed.data;
+    const { fileId, folderId, sharedWith, role, message } = parsed.data;
 
     // Verify the requesting user owns the target file or folder
     if (fileId) {
@@ -49,6 +48,7 @@ sharesRouter.post("/", requireAuth, async (req: Request, res: Response) => {
         ownerId: req.userId!,
         sharedWith: sharedWith ?? null,
         role,
+        message: message ?? null,
       },
     });
 
