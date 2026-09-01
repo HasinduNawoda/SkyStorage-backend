@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth";
 import { foldersRouter } from "./routes/folders";
 import { filesRouter } from "./routes/files";
 import { sharesRouter } from "./routes/shares";
+import { deepCleanRouter } from "./routes/deepclean";
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use("/auth", authRouter);
 app.use("/folders", foldersRouter);
 app.use("/files", filesRouter);
 app.use("/shares", sharesRouter);
+app.use("/deepclean", deepCleanRouter);
 
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
