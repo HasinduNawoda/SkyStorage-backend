@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
-import { deleteObject } from "../utils/storage";
+import { deleteObject, uploadObject, getDownloadUrl } from "../utils/storage";
 
 export const usersRouter = Router();
 
@@ -24,7 +24,14 @@ usersRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
       },
     });
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
+
+    let profilePhotoUrl = null;
+    if (user.profilePhoto) {
+      try { profilePhotoUrl = await getDownloadUrl(user.profilePhoto); } 
+      catch (e) { console.error("Failed to get profile photo url", e); }
+    }
+
+    res.json({ ...user, profilePhoto: profilePhotoUrl });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -38,7 +45,7 @@ const updateProfileSchema = z.object({
   phoneNumber: z.string().trim().max(50).nullable().optional(),
 });
 
-// Update profile
+// Update profile text fields
 usersRouter.put("/profile", requireAuth, async (req: Request, res: Response) => {
   try {
     const parsed = updateProfileSchema.safeParse(req.body);
@@ -66,7 +73,63 @@ usersRouter.put("/profile", requireAuth, async (req: Request, res: Response) => 
       },
     });
 
-    res.json(updatedUser);
+    let profilePhotoUrl = null;
+    if (updatedUser.profilePhoto) {
+      try { profilePhotoUrl = await getDownloadUrl(updatedUser.profilePhoto); } 
+      catch (e) {}
+    }
+
+    res.json({ ...updatedUser, profilePhoto: profilePhotoUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Upload profile photo
+usersRouter.put("/profile-photo", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Buffer;
+    if (!body || !body.length) return res.status(400).json({ error: "Empty body" });
+
+    const mimeType = req.headers["x-mime-type"] as string || "image/jpeg";
+    const storageKey = `profile-photos/${req.userId}-${Date.now()}`;
+
+    // If user already had a photo, delete the old one to save space
+    const existingUser = await db.user.findUnique({ where: { id: req.userId }, select: { profilePhoto: true } });
+    if (existingUser?.profilePhoto) {
+      await deleteObject(existingUser.profilePhoto).catch(() => {});
+    }
+
+    await uploadObject(storageKey, body, mimeType);
+
+    await db.user.update({
+      where: { id: req.userId },
+      data: { profilePhoto: storageKey },
+    });
+
+    const url = await getDownloadUrl(storageKey);
+    res.json({ profilePhoto: url });
+  } catch (err) {
+    console.error("profile photo upload error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Remove profile photo
+usersRouter.delete("/profile-photo", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const existingUser = await db.user.findUnique({ where: { id: req.userId }, select: { profilePhoto: true } });
+    if (existingUser?.profilePhoto) {
+      await deleteObject(existingUser.profilePhoto).catch(() => {});
+    }
+
+    await db.user.update({
+      where: { id: req.userId },
+      data: { profilePhoto: null },
+    });
+
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });

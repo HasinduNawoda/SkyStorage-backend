@@ -112,9 +112,9 @@ authRouter.post("/signup", authLimiter, async (req: Request, res: Response) => {
 
     await issueSession(req, res, user.id);
     res.status(201).json({ id: user.id, name: user.name, email: user.email });
-  } catch (err) {
+  } catch (err: any) {
     console.error("signup error:", err);
-    res.status(500).json({ error: "Something went wrong. Please try again." });
+    res.status(500).json({ error: "Something went wrong. Please try again.", details: err.message });
   }
 });
 
@@ -135,9 +135,9 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
 
     await issueSession(req, res, user.id);
     res.json({ id: user.id, name: user.name, email: user.email });
-  } catch (err) {
+  } catch (err: any) {
     console.error("login error:", err);
-    res.status(500).json({ error: "Something went wrong. Please try again." });
+    res.status(500).json({ error: "Something went wrong.", details: err.message });
   }
 });
 
