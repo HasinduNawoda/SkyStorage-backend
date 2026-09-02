@@ -11,6 +11,7 @@ import { filesRouter } from "./routes/files";
 import { sharesRouter } from "./routes/shares";
 import { deepCleanRouter } from "./routes/deepclean";
 import { usersRouter } from "./routes/users";
+import { oauthRouter } from "./routes/oauth";
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use("/files", filesRouter);
 app.use("/shares", sharesRouter);
 app.use("/deepclean", deepCleanRouter);
 app.use("/users", usersRouter);
+app.use("/oauth", oauthRouter);
 
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
