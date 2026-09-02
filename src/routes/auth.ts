@@ -42,14 +42,43 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-async function issueSession(res: Response, userId: string) {
+function parseUserAgent(ua: string = "") {
+  let browser = "Unknown Browser";
+  let device = "Desktop";
+  
+  if (ua.includes("Firefox")) browser = "Firefox";
+  else if (ua.includes("Chrome")) browser = "Chrome";
+  else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Safari";
+  else if (ua.includes("Edge")) browser = "Edge";
+  
+  if (ua.includes("Mobi") || ua.includes("Android") || ua.includes("iPhone")) {
+    device = "Mobile";
+  } else if (ua.includes("Mac OS")) {
+    device = "Mac";
+  } else if (ua.includes("Windows")) {
+    device = "Windows";
+  } else if (ua.includes("Linux")) {
+    device = "Linux";
+  }
+  
+  return { browser, device };
+}
+
+async function issueSession(req: Request, res: Response, userId: string) {
   const accessToken = signAccessToken(userId);
   const refreshToken = signRefreshToken(userId);
+  
+  const uaString = req.headers["user-agent"] || "";
+  const { browser, device } = parseUserAgent(uaString);
+  const ipAddress = req.ip || req.connection?.remoteAddress || "Unknown IP";
 
   await db.refreshToken.create({
     data: {
       tokenHash: hashToken(refreshToken),
       userId,
+      device,
+      browser,
+      ipAddress,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     },
   });
@@ -81,7 +110,7 @@ authRouter.post("/signup", authLimiter, async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await db.user.create({ data: { name, email, passwordHash } });
 
-    await issueSession(res, user.id);
+    await issueSession(req, res, user.id);
     res.status(201).json({ id: user.id, name: user.name, email: user.email });
   } catch (err) {
     console.error("signup error:", err);
@@ -104,7 +133,7 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return invalid();
 
-    await issueSession(res, user.id);
+    await issueSession(req, res, user.id);
     res.json({ id: user.id, name: user.name, email: user.email });
   } catch (err) {
     console.error("login error:", err);
@@ -132,7 +161,7 @@ authRouter.post("/refresh", async (req: Request, res: Response) => {
     }
 
     await db.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
-    await issueSession(res, payload.sub);
+    await issueSession(req, res, payload.sub);
 
     res.json({ ok: true });
   } catch (err) {

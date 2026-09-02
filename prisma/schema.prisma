@@ -18,8 +18,13 @@ datasource db {
 model User {
   id            String         @id @default(uuid())
   name          String
+  displayName   String?
   email         String         @unique
+  phoneNumber   String?
+  profilePhoto  String?
   passwordHash  String
+  googleId      String?        @unique
+  githubId      String?        @unique
   createdAt     DateTime       @default(now())
   refreshTokens RefreshToken[]
   folders       Folder[]
@@ -34,6 +39,10 @@ model RefreshToken {
   tokenHash String   @unique
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    String?
+  browser   String?
+  location  String?
+  ipAddress String?
   expiresAt DateTime
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
