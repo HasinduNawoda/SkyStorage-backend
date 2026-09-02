@@ -133,8 +133,14 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return invalid();
 
+    let profilePhotoUrl = null;
+    if (user.profilePhoto) {
+      const { getDownloadUrl } = require("../utils/storage");
+      try { profilePhotoUrl = await getDownloadUrl(user.profilePhoto); } catch (e) {}
+    }
+
     await issueSession(req, res, user.id);
-    res.json({ id: user.id, name: user.name, email: user.email });
+    res.json({ id: user.id, name: user.name, email: user.email, profilePhoto: profilePhotoUrl });
   } catch (err: any) {
     console.error("login error:", err);
     res.status(500).json({ error: "Something went wrong.", details: err.message });
@@ -174,13 +180,20 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = await db.user.findUnique({
       where: { id: req.userId },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, profilePhoto: true },
     });
     if (!user) return res.status(404).json({ error: "User not found." });
-    res.json(user);
+
+    let profilePhotoUrl = null;
+    if (user.profilePhoto) {
+      const { getDownloadUrl } = require("../utils/storage");
+      try { profilePhotoUrl = await getDownloadUrl(user.profilePhoto); } catch (e) {}
+    }
+
+    res.json({ id: user.id, name: user.name, email: user.email, profilePhoto: profilePhotoUrl });
   } catch (err) {
     console.error("me error:", err);
-    res.status(500).json({ error: "Something went wrong. Please try again." });
+    res.status(500).json({ error: "Something went wrong." });
   }
 });
 
